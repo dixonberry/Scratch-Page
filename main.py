@@ -5,172 +5,197 @@ import requests
 
 # --- Page Configuration ---
 st.set_page_config(
-    page_title="Market Insights Pro",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="Market Insights",
+    page_icon="📈",
+    layout="wide"
 )
 
-# --- Custom CSS for Professional Styling ---
-# This hides the default Streamlit menu and adds a professional color palette
+# --- Custom CSS (Clean & Professional) ---
 st.markdown("""
     <style>
-    /* Main Background adjustments */
-    .stApp {
-        background-color: #f5f7f9;
-    }
+    .stApp {background-color: #f8f9fa;}
+    h1, h2, h3 {font-family: 'Arial', sans-serif; color: #333;}
     
-    /* Header Styling */
-    h1, h2, h3 {
-        color: #0e1117;
-        font-family: 'Helvetica Neue', sans-serif;
-    }
-    
-    /* Custom Card for Metrics */
-    .metric-container {
-        background-color: #ffffff;
-        padding: 20px;
+    /* Star Card Styling */
+    .star-card {
+        background-color: white;
+        padding: 15px;
         border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        margin-bottom: 20px;
-        border-left: 5px solid #2b6cb0; /* Professional Blue Accent */
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        text-align: center;
+        border: 1px solid #e0e0e0;
     }
+    .pass {color: #27ae60; font-weight: bold;} 
+    .fail {color: #e74c3c; font-weight: bold;} 
+    .big-star {font-size: 30px; margin: 0;}
     
-    /* Hide the default Streamlit footer */
+    /* Hide default footer */
     footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- Function to Load SEC Data (Cached) ---
+# --- Helper: SEC Data Cache ---
 @st.cache_data
 def get_sec_tickers():
-    headers = {'User-Agent': 'student-project-analytics@example.com'}
+    headers = {'User-Agent': 'student-project@example.com'}
     try:
         url = "https://www.sec.gov/files/company_tickers.json"
         response = requests.get(url, headers=headers)
         data = response.json()
         df = pd.DataFrame.from_dict(data, orient='index')
-        df['label'] = df['ticker'] + " | " + df['title']
         return df
     except:
         return pd.DataFrame()
 
-# --- Main Interface ---
-st.title("Market Insights | Fundamental Analytics")
-st.markdown("Institutional-grade analysis for the modern investor.")
+# --- Main App ---
+st.title("Market Insights") # Simplified Title
 st.markdown("---")
 
-# Sidebar for Controls
+# --- Sidebar: Search Logic ---
 with st.sidebar:
-    st.header("Analysis Controls")
+    st.header("Find a Security") # More intuitive label
     
-    # Load Data
-    with st.spinner("Connecting to SEC Database..."):
-        df_tickers = get_sec_tickers()
+    # We load the data for backend searching, but don't show the huge dropdown
+    df_tickers = get_sec_tickers()
     
-    if not df_tickers.empty:
-        selected_company = st.selectbox(
-            "Select Security",
-            options=df_tickers['label'],
-            index=None,
-            placeholder="Type company name or ticker..."
-        )
-    else:
-        # Fallback if SEC data fails
-        user_input = st.text_input("Enter Ticker Symbol", value="AAPL")
-        selected_company = user_input
+    # Simple Text Input (Cleaner than the giant list)
+    query = st.text_input("Ticker or Company Name:", value="AAPL")
+    
+    # Time Range Selector (Google Style)
+    time_range = st.radio("Time Range", ["1Y", "3Y", "5Y", "Max"], index=1, horizontal=True)
+    
+    # Convert "1Y" to yfinance format "1y"
+    period_map = {"1Y": "1y", "3Y": "3y", "5Y": "5y", "Max": "max"}
+    selected_period = period_map[time_range]
 
-# --- Main Dashboard Logic ---
-if selected_company:
-    # Extract ticker (handles both SEC format and manual input)
-    if " | " in selected_company:
-        ticker = selected_company.split(" | ")[0]
-    else:
-        ticker = selected_company.upper()
-
+# --- App Logic ---
+if query:
+    # 1. Ticker Resolution Logic
+    # First, assume it's a ticker (e.g. VOO)
+    ticker_candidate = query.upper()
+    
+    # If the user typed a name (like "Apple"), try to find the ticker in our database
+    if not df_tickers.empty and len(query) > 3:
+        # Search the 'title' column for a match
+        match = df_tickers[df_tickers['title'].str.contains(query, case=False, na=False)]
+        if not match.empty:
+            # If we found a name match, use that ticker
+            ticker_candidate = match.iloc[0]['ticker']
+    
+    # 2. Fetch Data
+    ticker = ticker_candidate
     try:
         stock = yf.Ticker(ticker)
-        
-        # Fetch History & Info
-        history = stock.history(period="3y")
         info = stock.info
         
+        # Fetch History based on selected period
+        history = stock.history(period=selected_period)
+        
         if history.empty:
-            st.error(f"Unable to retrieve data for {ticker}. The security may be delisted.")
+            st.error(f"Could not find data for '{ticker}'. Please check the spelling.")
             st.stop()
-
-        # --- Section 1: Executive Summary ---
+            
+        # --- Section 1: Key Metrics ---
         current_price = history['Close'].iloc[-1]
-        market_cap = info.get('marketCap', 0)
+        
+        # Calculate Day's Change (Price now - Price yesterday)
+        if len(history) >= 2:
+            prev_close = history['Close'].iloc[-2]
+            change_amt = current_price - prev_close
+            change_pct = (change_amt / prev_close) * 100
+            change_color = "normal" if change_amt >= 0 else "inverse" # Streamlit handles green/red automatically
+        else:
+            change_amt = 0
+            change_pct = 0
+            change_color = "off"
+
+        st.subheader(f"{info.get('shortName', ticker)} ({ticker})")
         
         col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Current Price", f"${current_price:,.2f}")
-        with col2:
-            st.metric("Market Cap", f"${market_cap/1e9:,.2f} B")
-        with col3:
-            # 52 Week High logic
-            high_52 = info.get('fiftyTwoWeekHigh', current_price)
-            diff_from_high = ((current_price - high_52) / high_52) * 100
-            st.metric("Dist. to 52W High", f"{diff_from_high:.1f}%")
+        col1.metric("Current Price", f"${current_price:,.2f}", f"{change_amt:.2f} ({change_pct:.2f}%)")
+        col2.metric("Market Cap", f"${info.get('marketCap', 0)/1e9:,.2f} B")
+        col3.metric("Volume", f"{info.get('volume', 0):,}")
 
-        # --- Section 2: Price Action ---
-        st.subheader(f"Price Performance: {ticker}")
-        st.area_chart(history['Close'], color="#2b6cb0") # Professional Blue Chart
-
-        # --- Section 3: Fundamental Health Score ---
-        st.markdown("### Algorithmic Assessment")
+        # --- Section 2: The 5-Star Analysis ---
+        st.markdown("### Fundamental Strength")
         
-        # Calculate Scores
+        # Gather Data
+        pe = info.get('forwardPE')
+        margin = info.get('profitMargins')
+        debt_equity = info.get('debtToEquity')
+        if debt_equity: debt_equity = debt_equity / 100
+        revenue_growth = info.get('revenueGrowth')
+        current_ratio = info.get('currentRatio')
+
+        # Score Logic
         score = 0
-        reasons = []
+        results = {}
+
+        # 1. Value
+        if pe and 0 < pe < 30:
+            results['Value'] = {'pass': True, 'msg': f"Fair Price (P/E: {pe:.1f})"}
+            score += 1
+        else:
+            val = f"{pe:.1f}" if pe else "N/A"
+            results['Value'] = {'pass': False, 'msg': f"Expensive (P/E: {val})"}
+
+        # 2. Profit
+        if margin and margin > 0.10:
+            results['Profit'] = {'pass': True, 'msg': f"Healthy ({margin:.1%})"}
+            score += 1
+        else:
+            val = f"{margin:.1%}" if margin else "N/A"
+            results['Profit'] = {'pass': False, 'msg': f"Low Margin ({val})"}
+
+        # 3. Safety
+        if debt_equity and debt_equity < 1.5:
+            results['Safety'] = {'pass': True, 'msg': f"Safe Debt ({debt_equity:.2f})"}
+            score += 1
+        else:
+            val = f"{debt_equity:.2f}" if debt_equity else "N/A"
+            results['Safety'] = {'pass': False, 'msg': f"High Debt ({val})"}
+
+        # 4. Growth
+        if revenue_growth and revenue_growth > 0.05:
+            results['Growth'] = {'pass': True, 'msg': f"Growing ({revenue_growth:.1%})"}
+            score += 1
+        else:
+            val = f"{revenue_growth:.1%}" if revenue_growth else "N/A"
+            results['Growth'] = {'pass': False, 'msg': f"Slow Growth ({val})"}
+
+        # 5. Liquidity
+        if current_ratio and current_ratio > 1.0:
+            results['Liquidity'] = {'pass': True, 'msg': f"Solvent ({current_ratio:.2f})"}
+            score += 1
+        else:
+            val = f"{current_ratio:.2f}" if current_ratio else "N/A"
+            results['Liquidity'] = {'pass': False, 'msg': f"Tight Cash ({val})"}
+
+        # Display Stars
+        c1, c2, c3, c4, c5 = st.columns(5)
         
-        # Metric 1: Valuation (P/E)
-        pe_ratio = info.get('forwardPE', None)
-        if pe_ratio and pe_ratio < 25:
-            score += 1
-            reasons.append(f"Undervalued: Forward P/E is {pe_ratio:.1f} (Target < 25)")
-        elif pe_ratio:
-            reasons.append(f"Overvalued: Forward P/E is {pe_ratio:.1f} (Target < 25)")
-        else:
-            reasons.append("Valuation: Data Unavailable")
+        def show_card(col, title, result):
+            with col:
+                icon = "⭐" if result['pass'] else "⚪"
+                color_class = "pass" if result['pass'] else "fail"
+                st.markdown(f"""
+                <div class="star-card">
+                    <p class="big-star">{icon}</p>
+                    <p style="font-weight:bold; margin-bottom:5px;">{title}</p>
+                    <p class="{color_class}" style="font-size:13px;">{result['msg']}</p>
+                </div>
+                """, unsafe_allow_html=True)
 
-        # Metric 2: Efficiency (ROE)
-        roe = info.get('returnOnEquity', 0)
-        if roe > 0.10:
-            score += 1
-            reasons.append(f"Efficient Management: ROE is {roe:.1%} (Target > 10%)")
-        else:
-            reasons.append(f"Inefficient Management: ROE is {roe:.1%} (Target > 10%)")
+        show_card(c1, "VALUE", results['Value'])
+        show_card(c2, "PROFIT", results['Profit'])
+        show_card(c3, "SAFETY", results['Safety'])
+        show_card(c4, "GROWTH", results['Growth'])
+        show_card(c5, "LIQUIDITY", results['Liquidity'])
 
-        # Metric 3: Momentum (vs 50 Day Avg)
-        ma_50 = history['Close'].tail(50).mean()
-        if current_price > ma_50:
-            score += 1
-            reasons.append(f"Positive Momentum: Price is above 50-day average")
-        else:
-            reasons.append(f"Negative Momentum: Price is below 50-day average")
-
-        # Display the Score Card cleanly
-        # We use a container with a border instead of st.success to avoid the 'green box' look if you want it neutral
-        with st.container():
-            st.write(f"**Composite Score: {score} / 3**")
-            
-            if score == 3:
-                st.success("Rating: STRONG BUY")
-            elif score == 2:
-                st.warning("Rating: ACCUMULATE / HOLD")
-            else:
-                st.error("Rating: AVOID / SELL")
-            
-            # Show details in a clean bulleted list, not a raw object print
-            with st.expander("View Analyst Logic"):
-                for reason in reasons:
-                    st.write(f"• {reason}")
+        # --- Section 3: Chart ---
+        st.markdown("---")
+        st.subheader(f"Price History ({time_range})")
+        st.line_chart(history['Close'])
 
     except Exception as e:
-        st.error(f"System Error: {e}")
-
-else:
-    # Landing Page content (when no stock is selected)
-    st.info("Select a company from the sidebar to begin analysis.")
+        st.error(f"Error: {e}")
