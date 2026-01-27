@@ -1,138 +1,176 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import requests
 
-# --- Page Config ---
-st.set_page_config(page_title="The Investor", page_icon="📈")
+# --- Page Configuration ---
+st.set_page_config(
+    page_title="Market Insights Pro",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# --- Feature 1: The Smart Search Logic ---
-def get_ticker_from_name(name):
-    """
-    A simple lookup for common companies to demonstrate 'Smart Search'.
-    In a production app, this would connect to a search API.
-    """
-    # A mini-database of common stocks for the demo
-    common_mapping = {
-        "WALMART": "WMT",
-        "APPLE": "AAPL",
-        "MICROSOFT": "MSFT",
-        "TESLA": "TSLA",
-        "AMAZON": "AMZN",
-        "GOOGLE": "GOOGL",
-        "PATTERN": "PTRN", # Added based on your request
-        "PATTERN GROUP": "PTRN",
-        "NVIDIA": "NVDA",
-        "FORD": "F"
+# --- Custom CSS for Professional Styling ---
+# This hides the default Streamlit menu and adds a professional color palette
+st.markdown("""
+    <style>
+    /* Main Background adjustments */
+    .stApp {
+        background-color: #f5f7f9;
     }
     
-    clean_name = name.strip().upper()
+    /* Header Styling */
+    h1, h2, h3 {
+        color: #0e1117;
+        font-family: 'Helvetica Neue', sans-serif;
+    }
     
-    # Check if the user actually typed a valid ticker directly (3-4 chars)
-    if len(clean_name) <= 5 and clean_name.isalpha():
-        return clean_name
+    /* Custom Card for Metrics */
+    .metric-container {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+        border-left: 5px solid #2b6cb0; /* Professional Blue Accent */
+    }
+    
+    /* Hide the default Streamlit footer */
+    footer {visibility: hidden;}
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- Function to Load SEC Data (Cached) ---
+@st.cache_data
+def get_sec_tickers():
+    headers = {'User-Agent': 'student-project-analytics@example.com'}
+    try:
+        url = "https://www.sec.gov/files/company_tickers.json"
+        response = requests.get(url, headers=headers)
+        data = response.json()
+        df = pd.DataFrame.from_dict(data, orient='index')
+        df['label'] = df['ticker'] + " | " + df['title']
+        return df
+    except:
+        return pd.DataFrame()
+
+# --- Main Interface ---
+st.title("Market Insights | Fundamental Analytics")
+st.markdown("Institutional-grade analysis for the modern investor.")
+st.markdown("---")
+
+# Sidebar for Controls
+with st.sidebar:
+    st.header("Analysis Controls")
+    
+    # Load Data
+    with st.spinner("Connecting to SEC Database..."):
+        df_tickers = get_sec_tickers()
+    
+    if not df_tickers.empty:
+        selected_company = st.selectbox(
+            "Select Security",
+            options=df_tickers['label'],
+            index=None,
+            placeholder="Type company name or ticker..."
+        )
+    else:
+        # Fallback if SEC data fails
+        user_input = st.text_input("Enter Ticker Symbol", value="AAPL")
+        selected_company = user_input
+
+# --- Main Dashboard Logic ---
+if selected_company:
+    # Extract ticker (handles both SEC format and manual input)
+    if " | " in selected_company:
+        ticker = selected_company.split(" | ")[0]
+    else:
+        ticker = selected_company.upper()
+
+    try:
+        stock = yf.Ticker(ticker)
         
-    # Check the dictionary
-    return common_mapping.get(clean_name, None)
+        # Fetch History & Info
+        history = stock.history(period="3y")
+        info = stock.info
+        
+        if history.empty:
+            st.error(f"Unable to retrieve data for {ticker}. The security may be delisted.")
+            st.stop()
 
-# --- App Layout ---
-st.title("📈 The Investor")
-st.markdown("Simple, data-driven investing for beginners.")
+        # --- Section 1: Executive Summary ---
+        current_price = history['Close'].iloc[-1]
+        market_cap = info.get('marketCap', 0)
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Current Price", f"${current_price:,.2f}")
+        with col2:
+            st.metric("Market Cap", f"${market_cap/1e9:,.2f} B")
+        with col3:
+            # 52 Week High logic
+            high_52 = info.get('fiftyTwoWeekHigh', current_price)
+            diff_from_high = ((current_price - high_52) / high_52) * 100
+            st.metric("Dist. to 52W High", f"{diff_from_high:.1f}%")
 
-# Input Section
-user_input = st.text_input("Enter Company Name or Ticker", placeholder="e.g. Walmart, Pattern, or AAPL")
+        # --- Section 2: Price Action ---
+        st.subheader(f"Price Performance: {ticker}")
+        st.area_chart(history['Close'], color="#2b6cb0") # Professional Blue Chart
 
-if user_input:
-    # Attempt to resolve name to ticker
-    ticker_symbol = get_ticker_from_name(user_input)
-    
-    # If Smart Search fails, ask user for manual input
-    if not ticker_symbol:
-        st.warning(f"Could not auto-detect a ticker for '{user_input}'. Please enter the exact Ticker Symbol (e.g., PTRN).")
-        ticker_symbol = st.text_input("Enter Ticker Symbol Manually").upper()
+        # --- Section 3: Fundamental Health Score ---
+        st.markdown("### Algorithmic Assessment")
+        
+        # Calculate Scores
+        score = 0
+        reasons = []
+        
+        # Metric 1: Valuation (P/E)
+        pe_ratio = info.get('forwardPE', None)
+        if pe_ratio and pe_ratio < 25:
+            score += 1
+            reasons.append(f"Undervalued: Forward P/E is {pe_ratio:.1f} (Target < 25)")
+        elif pe_ratio:
+            reasons.append(f"Overvalued: Forward P/E is {pe_ratio:.1f} (Target < 25)")
+        else:
+            reasons.append("Valuation: Data Unavailable")
 
-    # Proceed only if we have a valid ticker
-    if ticker_symbol:
-        try:
-            # Fetch Data
-            stock = yf.Ticker(ticker_symbol)
+        # Metric 2: Efficiency (ROE)
+        roe = info.get('returnOnEquity', 0)
+        if roe > 0.10:
+            score += 1
+            reasons.append(f"Efficient Management: ROE is {roe:.1%} (Target > 10%)")
+        else:
+            reasons.append(f"Inefficient Management: ROE is {roe:.1%} (Target > 10%)")
+
+        # Metric 3: Momentum (vs 50 Day Avg)
+        ma_50 = history['Close'].tail(50).mean()
+        if current_price > ma_50:
+            score += 1
+            reasons.append(f"Positive Momentum: Price is above 50-day average")
+        else:
+            reasons.append(f"Negative Momentum: Price is below 50-day average")
+
+        # Display the Score Card cleanly
+        # We use a container with a border instead of st.success to avoid the 'green box' look if you want it neutral
+        with st.container():
+            st.write(f"**Composite Score: {score} / 3**")
             
-            # --- Feature 2: The Dashboard ---
-            with st.spinner(f"Fetching data for {ticker_symbol}..."):
-                # Fetch 3 years history
-                history = stock.history(period="3y")
-                info = stock.info
-                
-                if history.empty:
-                    st.error(f"No data found for {ticker_symbol}. It may be delisted or misspelled.")
-                    st.stop()
-                
-                # Display Header
-                company_name = info.get('longName', ticker_symbol)
-                current_price = history['Close'].iloc[-1]
-                st.header(f"{company_name} ({ticker_symbol})")
-                st.metric("Current Price", f"${current_price:.2f}")
+            if score == 3:
+                st.success("Rating: STRONG BUY")
+            elif score == 2:
+                st.warning("Rating: ACCUMULATE / HOLD")
+            else:
+                st.error("Rating: AVOID / SELL")
+            
+            # Show details in a clean bulleted list, not a raw object print
+            with st.expander("View Analyst Logic"):
+                for reason in reasons:
+                    st.write(f"• {reason}")
 
-                # Plot Chart
-                st.subheader("📉 Price History (Last 3 Years)")
-                st.line_chart(history['Close'])
-                st.caption("⚠️ Data provided for educational purposes. Prices may be delayed by 15 minutes.")
+    except Exception as e:
+        st.error(f"System Error: {e}")
 
-                st.markdown("---")
-
-                # --- Feature 3: The 'Analyst' Algorithm ---
-                st.subheader("🤖 AI Analyst: Should I Invest?")
-                
-                # 1. Gather Metrics (using .get() to handle missing data safely)
-                forward_pe = info.get('forwardPE', None)
-                roe = info.get('returnOnEquity', 0)
-                
-                # Calculate 50-Day Moving Average manually from history
-                ma_50 = history['Close'].tail(50).mean()
-                
-                # 2. Calculate Score
-                score = 0
-                reasons = []
-
-                # Rule 1: Value (P/E < 25)
-                if forward_pe and forward_pe < 25:
-                    score += 1
-                    reasons.append(f"✅ **Good Value:** Forward P/E is {forward_pe:.1f} (under 25).")
-                elif forward_pe:
-                    reasons.append(f"❌ **Expensive:** Forward P/E is {forward_pe:.1f} (over 25).")
-                else:
-                    reasons.append("⚠️ **Data Missing:** Could not verify P/E Ratio.")
-
-                # Rule 2: Momentum (Price > 50-Day MA)
-                if current_price > ma_50:
-                    score += 1
-                    reasons.append(f"✅ **Positive Momentum:** Price (${current_price:.2f}) is above the 50-day average (${ma_50:.2f}).")
-                else:
-                    reasons.append(f"❌ **Negative Momentum:** Price is below the 50-day average.")
-
-                # Rule 3: Efficiency (ROE > 10%)
-                if roe and roe > 0.10:
-                    score += 1
-                    reasons.append(f"✅ **High Efficiency:** ROE is {roe:.1%} (healthy is >10%).")
-                else:
-                    reasons.append(f"❌ **Low Efficiency:** ROE is {roe:.1%} (below 10%).")
-
-                # 3. Display Result Card
-                result_color = "red"
-                result_msg = "🔴 Watch / Wait (High Risk)"
-                
-                if score == 3:
-                    result_color = "green"
-                    result_msg = "🟢 Strong Buy (Good Value & Momentum)"
-                elif score == 2:
-                    result_color = "orange" # Streamlit uses orange for yellow-ish warnings
-                    result_msg = "🟡 Moderate Buy"
-
-                # Render the Card
-                st.success(result_msg) if score == 3 else (st.warning(result_msg) if score == 2 else st.error(result_msg))
-                
-                with st.expander("See Analyst Logic (Why?)"):
-                    for reason in reasons:
-                        st.markdown(reason)
-
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
+else:
+    # Landing Page content (when no stock is selected)
+    st.info("Select a company from the sidebar to begin analysis.")
