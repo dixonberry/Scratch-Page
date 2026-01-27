@@ -97,7 +97,7 @@ if query:
             c2.metric("Market Cap", f"${mkt_cap/1e9:,.2f} B" if mkt_cap else "N/A")
             c3.metric("Sector", info.get('sector', 'Unknown'))
 
-        # --- Section 2: The "Brain" (Smart Switch) ---
+        # --- Section 2: Analysis Logic ---
         st.markdown(f"### {'Fund Analysis' if is_etf else 'Fundamental Strength'}")
         
         results = {}
@@ -186,27 +186,24 @@ if query:
                 </div>
                 """, unsafe_allow_html=True)
 
-        # --- Section 3: The Beginner Definitions ---
+        # --- Section 3: Clean Definitions ---
         st.markdown("---")
-        with st.expander("📘 What do these terms mean? (Beginner's Guide)"):
+        with st.expander("What do these terms mean?"):
             if is_etf:
                 st.markdown("""
-                ### 🏦 Understanding Funds (ETFs)
-                * **FEES (Expense Ratio):** The "Management Fee." If this is 0.03%, you pay 30 cents a year for every \$1,000 you invest. **Lower is better.**
-                * **RISK (Beta):** The "Rollercoaster Factor."
-                    * Beta = 1.0: Moves exactly like the market.
-                    * Beta > 1.0: More volatile (higher highs, lower lows).
-                    * Beta < 1.0: Smoother ride (less scary).
-                * **YIELD:** The cash bonus (dividends) they pay you just for holding the stock.
-                * **SIZE (Assets):** How much money is in the pot. Bigger funds are usually safer and easier to trade.
+                * **FEES (Expense Ratio):** The management fee you pay to hold the fund. Lower is better (we look for < 0.5%).
+                * **RISK (Beta):** Measures volatility. A Beta of 1.0 moves with the market. Lower than 1.0 is more stable; higher is riskier.
+                * **YIELD (Dividend):** The annual percentage paid out to you in cash dividends.
+                * **RETURN (YTD):** Year-to-Date return. Is the fund actually making money this year?
+                * **SIZE (Assets):** Total money invested in the fund. Larger funds (> $1B) are generally safer and more liquid.
                 """)
             else:
                 st.markdown("""
-                ### 🏢 Understanding Companies
-                * **VALUE (P/E Ratio):** The "Price Tag." Think of it like buying a house. A P/E of 20 means you are paying \$20 for every \$1 of rent the house earns. **Lower is usually better.**
-                * **PROFIT (Margins):** The "Keep-It" Score. If Apple sells an iPhone for \$1,000 and keeps \$250, their margin is 25%. We want this number high!
-                * **SAFETY (Debt):** Does the company owe too much money on its credit cards? We want debt to be low so they don't go bankrupt.
-                * **LIQUIDITY (Current Ratio):** The "Piggy Bank" Test. If they had to pay all their bills *today*, do they have enough cash? (Ratio > 1.0 means Yes).
+                * **VALUE (P/E Ratio):** Price-to-Earnings. It measures how much you pay for $1 of earnings. We look for < 30.
+                * **PROFIT (Margins):** The percentage of revenue the company keeps as profit. We look for > 10%.
+                * **SAFETY (Debt):** Debt-to-Equity ratio. Measures financial leverage. We want this low (< 1.5) to avoid bankruptcy risk.
+                * **GROWTH (Revenue):** Measures if the company's sales are increasing year-over-year. We look for > 5% growth.
+                * **LIQUIDITY (Current Ratio):** Can the company pay its short-term bills? A ratio > 1.0 means they have enough cash.
                 """)
 
         # --- Section 4: Chart ---
