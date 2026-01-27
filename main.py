@@ -19,8 +19,8 @@ st.markdown("""
         border: 1px solid #e0e0e0;
         height: 100%;
     }
-    .pass {color: #27ae60; font-weight: bold;} 
-    .fail {color: #e74c3c; font-weight: bold;} 
+    .pass {color: #27ae60; font-weight: bold;} /* Green */
+    .fail {color: #7f8c8d; font-weight: bold;} /* Professional Grey for Empty Stars */
     .big-star {font-size: 30px; margin: 0;}
     footer {visibility: hidden;}
     </style>
@@ -110,35 +110,30 @@ if query:
             ytd = info.get('ytdReturn')
             assets = info.get('totalAssets', 0)
 
-            # Rule 1: Fees
             if exp_ratio is not None and exp_ratio < 0.005:
                 results['Fees'] = {'pass': True, 'msg': f"Low Cost ({exp_ratio:.2%})"}
             else:
                 val = f"{exp_ratio:.2%}" if exp_ratio else "N/A"
                 results['Fees'] = {'pass': False, 'msg': f"High Cost ({val})"}
 
-            # Rule 2: Risk (Beta)
             if beta and beta < 1.1:
                 results['Risk'] = {'pass': True, 'msg': f"Stable ({beta:.2f})"}
             else:
                 val = f"{beta:.2f}" if beta else "N/A"
                 results['Risk'] = {'pass': False, 'msg': f"Volatile ({val})"}
 
-            # Rule 3: Yield
             if yield_pct and yield_pct > 0.01:
                 results['Yield'] = {'pass': True, 'msg': f"Pays Divs ({yield_pct:.2%})"}
             else:
                 val = f"{yield_pct:.2%}" if yield_pct else "Low/None"
                 results['Yield'] = {'pass': False, 'msg': f"Low Yield ({val})"}
 
-            # Rule 4: Return
             if ytd and ytd > 0:
                 results['Return'] = {'pass': True, 'msg': f"Positive YTD ({ytd:.2%})"}
             else:
                 val = f"{ytd:.2%}" if ytd else "N/A"
                 results['Return'] = {'pass': False, 'msg': f"Negative YTD ({val})"}
 
-            # Rule 5: Popularity
             if assets > 1e9:
                 results['Size'] = {'pass': True, 'msg': "Large Fund"}
             else:
@@ -152,35 +147,32 @@ if query:
             rev_growth = info.get('revenueGrowth')
             curr_ratio = info.get('currentRatio')
 
-            # Metric 1: Value
             if pe and 0 < pe < 30: results['Value'] = {'pass': True, 'msg': f"Fair Price ({pe:.1f})"}
             else: results['Value'] = {'pass': False, 'msg': f"Expensive ({pe}N/A)"}
 
-            # Metric 2: Profit
             if margin and margin > 0.10: results['Profit'] = {'pass': True, 'msg': f"High Margin ({margin:.1%})"}
             else: results['Profit'] = {'pass': False, 'msg': f"Low Margin ({margin}N/A)"}
             
-            # Metric 3: Safety
             if debt and debt < 150: results['Safety'] = {'pass': True, 'msg': "Safe Debt"} 
             else: results['Safety'] = {'pass': False, 'msg': "High Debt"}
             
-            # Metric 4: Growth
             if rev_growth and rev_growth > 0.05: results['Growth'] = {'pass': True, 'msg': "Growing"} 
             else: results['Growth'] = {'pass': False, 'msg': "Slow/No Growth"}
             
-            # Metric 5: Liquidity
             if curr_ratio and curr_ratio > 1.0: results['Liquidity'] = {'pass': True, 'msg': "Solvent"} 
             else: results['Liquidity'] = {'pass': False, 'msg': "Tight Cash"}
 
-        # Display Logic
+        # Display Logic (UPDATED FOR HOLLOW STARS)
         cols = st.columns(len(results))
         for i, (key, val) in enumerate(results.items()):
             with cols[i]:
-                icon = "⭐" if val['pass'] else "⚪"
+                # --- The Logic Change is Here ---
+                icon = "⭐" if val['pass'] else "☆" 
                 color = "pass" if val['pass'] else "fail"
+                
                 st.markdown(f"""
                 <div class="star-card">
-                    <p class="big-star">{icon}</p>
+                    <p class="big-star" style="color: {'#f1c40f' if val['pass'] else '#bdc3c7'};">{icon}</p>
                     <p style="font-weight:bold;">{key.upper()}</p>
                     <p class="{color}" style="font-size:13px;">{val['msg']}</p>
                 </div>
