@@ -46,7 +46,7 @@ st.markdown("---")
 with st.sidebar:
     st.header("Find a Security")
     df_tickers = get_sec_tickers()
-    query = st.text_input("Ticker or Name:", value="VOO") # Changed default to VOO to test
+    query = st.text_input("Ticker or Name:", value="VOO")
     time_range = st.radio("Range", ["1Y", "3Y", "5Y", "Max"], index=1, horizontal=True)
     period_map = {"1Y": "1y", "3Y": "3y", "5Y": "5y", "Max": "max"}
 
@@ -70,13 +70,12 @@ if query:
             st.stop()
             
         # Detect Type: ETF vs STOCK
-        quote_type = info.get('quoteType', 'EQUITY') # Default to Equity if unknown
+        quote_type = info.get('quoteType', 'EQUITY') 
         is_etf = quote_type == 'ETF'
 
         # --- Section 1: Header ---
         current_price = history['Close'].iloc[-1]
         
-        # Calculate Change
         if len(history) >= 2:
             prev_close = history['Close'].iloc[-2]
             change = current_price - prev_close
@@ -86,15 +85,13 @@ if query:
 
         st.subheader(f"{info.get('shortName', ticker)} ({ticker})")
         
-        # Metric Badge Logic
         c1, c2, c3 = st.columns(3)
         c1.metric("Price", f"${current_price:,.2f}", f"{change:.2f} ({pct_change:.2f}%)")
         
-        # Market Cap (Stocks) or Assets (ETFs)
         if is_etf:
             assets = info.get('totalAssets', 0)
             c2.metric("Total Assets", f"${assets/1e9:,.2f} B" if assets else "N/A")
-            c3.metric("Asset Class", "ETF / Fund")
+            c3.metric("Type", "ETF / Fund")
         else:
             mkt_cap = info.get('marketCap', 0)
             c2.metric("Market Cap", f"${mkt_cap/1e9:,.2f} B" if mkt_cap else "N/A")
@@ -107,89 +104,112 @@ if query:
 
         if is_etf:
             # === ETF LOGIC ===
-            
-            # 1. Expense Ratio (Lower is Better)
-            exp_ratio = info.get('annualReportExpenseRatio') # Returns 0.0003 for 0.03%
-            # Sometimes yfinance returns 'trailingAnnualDividendYield' for Yield
+            exp_ratio = info.get('annualReportExpenseRatio')
             yield_pct = info.get('yield', info.get('trailingAnnualDividendYield', 0))
             beta = info.get('beta3Year', 0)
+            ytd = info.get('ytdReturn')
+            assets = info.get('totalAssets', 0)
 
-            # Rule 1: Expense Ratio (Cheap?)
-            if exp_ratio is not None and exp_ratio < 0.005: # < 0.50%
-                results['Fees'] = {'pass': True, 'msg': f"Low Fees ({exp_ratio:.2%})"}
+            # Rule 1: Fees
+            if exp_ratio is not None and exp_ratio < 0.005:
+                results['Fees'] = {'pass': True, 'msg': f"Low Cost ({exp_ratio:.2%})"}
             else:
                 val = f"{exp_ratio:.2%}" if exp_ratio else "N/A"
-                results['Fees'] = {'pass': False, 'msg': f"High Fees ({val})"}
+                results['Fees'] = {'pass': False, 'msg': f"High Cost ({val})"}
 
             # Rule 2: Risk (Beta)
-            # Beta 1.0 = Market. < 1.0 = Less Volatile.
             if beta and beta < 1.1:
-                results['Risk'] = {'pass': True, 'msg': f"Stable (Beta: {beta:.2f})"}
+                results['Risk'] = {'pass': True, 'msg': f"Stable ({beta:.2f})"}
             else:
                 val = f"{beta:.2f}" if beta else "N/A"
-                results['Risk'] = {'pass': False, 'msg': f"Volatile (Beta: {val})"}
+                results['Risk'] = {'pass': False, 'msg': f"Volatile ({val})"}
 
-            # Rule 3: Yield (Dividends)
+            # Rule 3: Yield
             if yield_pct and yield_pct > 0.01:
                 results['Yield'] = {'pass': True, 'msg': f"Pays Divs ({yield_pct:.2%})"}
             else:
                 val = f"{yield_pct:.2%}" if yield_pct else "Low/None"
                 results['Yield'] = {'pass': False, 'msg': f"Low Yield ({val})"}
 
-            # Rule 4: Performance (Yearly Return)
-            ytd = info.get('ytdReturn')
+            # Rule 4: Return
             if ytd and ytd > 0:
-                results['YTD'] = {'pass': True, 'msg': f"Positive ({ytd:.2%})"}
+                results['Return'] = {'pass': True, 'msg': f"Positive YTD ({ytd:.2%})"}
             else:
                 val = f"{ytd:.2%}" if ytd else "N/A"
-                results['YTD'] = {'pass': False, 'msg': f"Negative/Flat ({val})"}
+                results['Return'] = {'pass': False, 'msg': f"Negative YTD ({val})"}
 
-            # Rule 5: Assets (Popularity)
-            assets = info.get('totalAssets', 0)
-            if assets > 1e9: # > $1 Billion
-                results['Size'] = {'pass': True, 'msg': "Large/Liquid Fund"}
+            # Rule 5: Popularity
+            if assets > 1e9:
+                results['Size'] = {'pass': True, 'msg': "Large Fund"}
             else:
                 results['Size'] = {'pass': False, 'msg': "Small Fund"}
 
         else:
-            # === STOCK LOGIC (Your Original 5 Stars) ===
+            # === STOCK LOGIC ===
             pe = info.get('forwardPE')
             margin = info.get('profitMargins')
             debt = info.get('debtToEquity')
             rev_growth = info.get('revenueGrowth')
             curr_ratio = info.get('currentRatio')
 
-            # (Same logic as before...)
-            if pe and 0 < pe < 30: results['Value'] = {'pass': True, 'msg': f"Fair (P/E: {pe:.1f})"}
-            else: results['Value'] = {'pass': False, 'msg': f"Expensive (P/E: {pe}N/A)"}
+            # Metric 1: Value
+            if pe and 0 < pe < 30: results['Value'] = {'pass': True, 'msg': f"Fair Price ({pe:.1f})"}
+            else: results['Value'] = {'pass': False, 'msg': f"Expensive ({pe}N/A)"}
 
-            if margin and margin > 0.10: results['Profit'] = {'pass': True, 'msg': f"High ({margin:.1%})"}
-            else: results['Profit'] = {'pass': False, 'msg': f"Low ({margin}N/A)"}
+            # Metric 2: Profit
+            if margin and margin > 0.10: results['Profit'] = {'pass': True, 'msg': f"High Margin ({margin:.1%})"}
+            else: results['Profit'] = {'pass': False, 'msg': f"Low Margin ({margin}N/A)"}
             
-            # Using simple keys for brevity in this snippet
-            results['Safety'] = {'pass': True, 'msg': "Safe Debt"} if (debt and debt < 150) else {'pass': False, 'msg': "High Debt"}
-            results['Growth'] = {'pass': True, 'msg': "Growing"} if (rev_growth and rev_growth > 0.05) else {'pass': False, 'msg': "Slow Growth"}
-            results['Liquidity'] = {'pass': True, 'msg': "Solvent"} if (curr_ratio and curr_ratio > 1.0) else {'pass': False, 'msg': "Tight Cash"}
+            # Metric 3: Safety
+            if debt and debt < 150: results['Safety'] = {'pass': True, 'msg': "Safe Debt"} 
+            else: results['Safety'] = {'pass': False, 'msg': "High Debt"}
+            
+            # Metric 4: Growth
+            if rev_growth and rev_growth > 0.05: results['Growth'] = {'pass': True, 'msg': "Growing"} 
+            else: results['Growth'] = {'pass': False, 'msg': "Slow/No Growth"}
+            
+            # Metric 5: Liquidity
+            if curr_ratio and curr_ratio > 1.0: results['Liquidity'] = {'pass': True, 'msg': "Solvent"} 
+            else: results['Liquidity'] = {'pass': False, 'msg': "Tight Cash"}
 
-        # Display Logic (Works for BOTH)
+        # Display Logic
         cols = st.columns(len(results))
-        def show_card(col, title, result):
-            with col:
-                icon = "⭐" if result['pass'] else "⚪"
-                color = "pass" if result['pass'] else "fail"
+        for i, (key, val) in enumerate(results.items()):
+            with cols[i]:
+                icon = "⭐" if val['pass'] else "⚪"
+                color = "pass" if val['pass'] else "fail"
                 st.markdown(f"""
                 <div class="star-card">
                     <p class="big-star">{icon}</p>
-                    <p style="font-weight:bold;">{title}</p>
-                    <p class="{color}" style="font-size:13px;">{result['msg']}</p>
+                    <p style="font-weight:bold;">{key.upper()}</p>
+                    <p class="{color}" style="font-size:13px;">{val['msg']}</p>
                 </div>
                 """, unsafe_allow_html=True)
 
-        for i, (key, val) in enumerate(results.items()):
-            show_card(cols[i], key.upper(), val)
-
-        # --- Section 3: Chart ---
+        # --- Section 3: The Beginner Definitions ---
         st.markdown("---")
+        with st.expander("📘 What do these terms mean? (Beginner's Guide)"):
+            if is_etf:
+                st.markdown("""
+                ### 🏦 Understanding Funds (ETFs)
+                * **FEES (Expense Ratio):** The "Management Fee." If this is 0.03%, you pay 30 cents a year for every \$1,000 you invest. **Lower is better.**
+                * **RISK (Beta):** The "Rollercoaster Factor."
+                    * Beta = 1.0: Moves exactly like the market.
+                    * Beta > 1.0: More volatile (higher highs, lower lows).
+                    * Beta < 1.0: Smoother ride (less scary).
+                * **YIELD:** The cash bonus (dividends) they pay you just for holding the stock.
+                * **SIZE (Assets):** How much money is in the pot. Bigger funds are usually safer and easier to trade.
+                """)
+            else:
+                st.markdown("""
+                ### 🏢 Understanding Companies
+                * **VALUE (P/E Ratio):** The "Price Tag." Think of it like buying a house. A P/E of 20 means you are paying \$20 for every \$1 of rent the house earns. **Lower is usually better.**
+                * **PROFIT (Margins):** The "Keep-It" Score. If Apple sells an iPhone for \$1,000 and keeps \$250, their margin is 25%. We want this number high!
+                * **SAFETY (Debt):** Does the company owe too much money on its credit cards? We want debt to be low so they don't go bankrupt.
+                * **LIQUIDITY (Current Ratio):** The "Piggy Bank" Test. If they had to pay all their bills *today*, do they have enough cash? (Ratio > 1.0 means Yes).
+                """)
+
+        # --- Section 4: Chart ---
         st.subheader(f"History ({time_range})")
         st.line_chart(history['Close'])
 
