@@ -24,6 +24,7 @@ st.markdown("""
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         text-align: center;
         border: 1px solid #e0e0e0;
+        height: 100%;
     }
     .pass {color: #27ae60; font-weight: bold;} 
     .fail {color: #e74c3c; font-weight: bold;} 
@@ -48,38 +49,32 @@ def get_sec_tickers():
         return pd.DataFrame()
 
 # --- Main App ---
-st.title("Market Insights") # Simplified Title
+st.title("Market Insights") 
 st.markdown("---")
 
 # --- Sidebar: Search Logic ---
 with st.sidebar:
-    st.header("Find a Security") # More intuitive label
+    st.header("Find a Security") 
     
-    # We load the data for backend searching, but don't show the huge dropdown
     df_tickers = get_sec_tickers()
     
-    # Simple Text Input (Cleaner than the giant list)
+    # Simple Text Input 
     query = st.text_input("Ticker or Company Name:", value="AAPL")
     
-    # Time Range Selector (Google Style)
+    # Time Range Selector 
     time_range = st.radio("Time Range", ["1Y", "3Y", "5Y", "Max"], index=1, horizontal=True)
     
-    # Convert "1Y" to yfinance format "1y"
     period_map = {"1Y": "1y", "3Y": "3y", "5Y": "5y", "Max": "max"}
     selected_period = period_map[time_range]
 
 # --- App Logic ---
 if query:
     # 1. Ticker Resolution Logic
-    # First, assume it's a ticker (e.g. VOO)
     ticker_candidate = query.upper()
     
-    # If the user typed a name (like "Apple"), try to find the ticker in our database
     if not df_tickers.empty and len(query) > 3:
-        # Search the 'title' column for a match
         match = df_tickers[df_tickers['title'].str.contains(query, case=False, na=False)]
         if not match.empty:
-            # If we found a name match, use that ticker
             ticker_candidate = match.iloc[0]['ticker']
     
     # 2. Fetch Data
@@ -87,8 +82,6 @@ if query:
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
-        
-        # Fetch History based on selected period
         history = stock.history(period=selected_period)
         
         if history.empty:
@@ -98,16 +91,13 @@ if query:
         # --- Section 1: Key Metrics ---
         current_price = history['Close'].iloc[-1]
         
-        # Calculate Day's Change (Price now - Price yesterday)
         if len(history) >= 2:
             prev_close = history['Close'].iloc[-2]
             change_amt = current_price - prev_close
             change_pct = (change_amt / prev_close) * 100
-            change_color = "normal" if change_amt >= 0 else "inverse" # Streamlit handles green/red automatically
         else:
             change_amt = 0
             change_pct = 0
-            change_color = "off"
 
         st.subheader(f"{info.get('shortName', ticker)} ({ticker})")
         
@@ -128,13 +118,11 @@ if query:
         current_ratio = info.get('currentRatio')
 
         # Score Logic
-        score = 0
         results = {}
 
         # 1. Value
         if pe and 0 < pe < 30:
             results['Value'] = {'pass': True, 'msg': f"Fair Price (P/E: {pe:.1f})"}
-            score += 1
         else:
             val = f"{pe:.1f}" if pe else "N/A"
             results['Value'] = {'pass': False, 'msg': f"Expensive (P/E: {val})"}
@@ -142,7 +130,6 @@ if query:
         # 2. Profit
         if margin and margin > 0.10:
             results['Profit'] = {'pass': True, 'msg': f"Healthy ({margin:.1%})"}
-            score += 1
         else:
             val = f"{margin:.1%}" if margin else "N/A"
             results['Profit'] = {'pass': False, 'msg': f"Low Margin ({val})"}
@@ -150,7 +137,6 @@ if query:
         # 3. Safety
         if debt_equity and debt_equity < 1.5:
             results['Safety'] = {'pass': True, 'msg': f"Safe Debt ({debt_equity:.2f})"}
-            score += 1
         else:
             val = f"{debt_equity:.2f}" if debt_equity else "N/A"
             results['Safety'] = {'pass': False, 'msg': f"High Debt ({val})"}
@@ -158,7 +144,6 @@ if query:
         # 4. Growth
         if revenue_growth and revenue_growth > 0.05:
             results['Growth'] = {'pass': True, 'msg': f"Growing ({revenue_growth:.1%})"}
-            score += 1
         else:
             val = f"{revenue_growth:.1%}" if revenue_growth else "N/A"
             results['Growth'] = {'pass': False, 'msg': f"Slow Growth ({val})"}
@@ -166,7 +151,6 @@ if query:
         # 5. Liquidity
         if current_ratio and current_ratio > 1.0:
             results['Liquidity'] = {'pass': True, 'msg': f"Solvent ({current_ratio:.2f})"}
-            score += 1
         else:
             val = f"{current_ratio:.2f}" if current_ratio else "N/A"
             results['Liquidity'] = {'pass': False, 'msg': f"Tight Cash ({val})"}
@@ -191,6 +175,16 @@ if query:
         show_card(c3, "SAFETY", results['Safety'])
         show_card(c4, "GROWTH", results['Growth'])
         show_card(c5, "LIQUIDITY", results['Liquidity'])
+
+        # --- NEW: Definitions Expander ---
+        with st.expander("📘 What do these stars mean? (Click to Learn)"):
+            st.markdown("""
+            * **VALUE (P/E Ratio):** The "Price Tag" of the stock. We want a P/E under 30. If it's higher, you are paying a premium for every dollar the company earns.
+            * **PROFIT (Margins):** How much money they actually keep. If a company sells \$100 of goods and keeps \$15, that's a 15% margin. We want > 10%.
+            * **SAFETY (Debt-to-Equity):** How much debt they have compared to their own money. Lower is safer. We want this under 1.5.
+            * **GROWTH (Revenue):** Is the business getting bigger? We look for sales to be higher this year than last year (> 5%).
+            * **LIQUIDITY (Current Ratio):** Can they pay their immediate bills? A ratio > 1.0 means they have enough cash/assets to cover short-term debts.
+            """)
 
         # --- Section 3: Chart ---
         st.markdown("---")
