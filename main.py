@@ -19,9 +19,12 @@ st.markdown("""
         border: 1px solid #e0e0e0;
         height: 100%;
     }
-    .pass {color: #27ae60; font-weight: bold;} /* Green */
-    .fail {color: #7f8c8d; font-weight: bold;} /* Professional Grey for Empty Stars */
+    .pass {color: #27ae60; font-weight: bold;} 
+    .fail {color: #7f8c8d; font-weight: bold;} 
     .big-star {font-size: 30px; margin: 0;}
+    /* Style for the link to make it look clean */
+    a {text-decoration: none; color: #2980b9; font-weight: normal; font-size: 16px;}
+    a:hover {text-decoration: underline; color: #3498db;}
     footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
@@ -162,17 +165,17 @@ if query:
             if curr_ratio and curr_ratio > 1.0: results['Liquidity'] = {'pass': True, 'msg': "Solvent"} 
             else: results['Liquidity'] = {'pass': False, 'msg': "Tight Cash"}
 
-        # Display Logic (UPDATED FOR HOLLOW STARS)
+        # Display Logic (Hollow Stars)
         cols = st.columns(len(results))
         for i, (key, val) in enumerate(results.items()):
             with cols[i]:
-                # --- The Logic Change is Here ---
                 icon = "⭐" if val['pass'] else "☆" 
                 color = "pass" if val['pass'] else "fail"
+                color_code = '#f1c40f' if val['pass'] else '#bdc3c7'
                 
                 st.markdown(f"""
                 <div class="star-card">
-                    <p class="big-star" style="color: {'#f1c40f' if val['pass'] else '#bdc3c7'};">{icon}</p>
+                    <p class="big-star" style="color: {color_code};">{icon}</p>
                     <p style="font-weight:bold;">{key.upper()}</p>
                     <p class="{color}" style="font-size:13px;">{val['msg']}</p>
                 </div>
@@ -198,8 +201,16 @@ if query:
                 * **LIQUIDITY (Current Ratio):** Can the company pay its short-term bills? A ratio > 1.0 means they have enough cash.
                 """)
 
-        # --- Section 4: Chart ---
-        st.subheader(f"History ({time_range})")
+        # --- Section 4: Chart with Link ---
+        # Generate the dynamic Yahoo Finance URL
+        yahoo_link = f"https://finance.yahoo.com/quote/{ticker}"
+        
+        # Use Markdown to create the header with the link in one line
+        st.markdown(f"""
+            ### History ({time_range}) 
+            <a href="{yahoo_link}" target="_blank" style="font-size: 14px; margin-left: 10px;">(View Source Data on Yahoo Finance 🔗)</a>
+            """, unsafe_allow_html=True)
+            
         st.line_chart(history['Close'])
 
     except Exception as e:
