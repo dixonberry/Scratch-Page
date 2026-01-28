@@ -2,7 +2,6 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import requests
-import requests_cache
 
 # --- Page Config ---
 st.set_page_config(page_title="Market Insights", page_icon="📈", layout="wide")
@@ -29,29 +28,26 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- CONFIGURATION (Crucial for fixing Rate Limits) ---
-# 1. Create a cached session for Yahoo Finance
-# This prevents you from re-downloading data you just looked at 5 seconds ago
-session = requests_cache.CachedSession('yfinance.cache', expire_after=300) # Cache for 5 mins
-
-# 2. Add a custom User-Agent (REPLACE 'your-email' WITH YOUR ACTUAL EMAIL)
-# This tells the servers exactly who you are so they don't block you.
-my_headers = {'User-Agent': 'student-project-analysis@gmail.com'} 
-session.headers.update(my_headers)
-
 # --- SEC Cache ---
-@st.cache_data
+@st.cache_data(ttl=3600) # Cache SEC list for 1 hour
 def get_sec_tickers():
+    headers = {'User-Agent': 'student-project-analysis@example.com'}
     try:
         url = "https://www.sec.gov/files/company_tickers.json"
-        # We use the custom headers here too
-        response = requests.get(url, headers=my_headers)
+        response = requests.get(url, headers=headers)
         data = response.json()
         df = pd.DataFrame.from_dict(data, orient='index')
         return df
-    except Exception:
-        # If SEC fails, return empty so the app doesn't crash
+    except:
         return pd.DataFrame()
+
+# --- YFinance Cache (The Fix) ---
+# We wrap the API call in this function so Streamlit remembers the result
+@st.cache_data(ttl=300) # Cache stock data for 5 minutes
+def get_stock_data(ticker, period):
+    stock = yf.Ticker(ticker)
+    # We fetch history and info together to minimize API hits
+    return stock.history(period=period), stock.info
 
 # --- Main App ---
 st.title("Market Insights") 
@@ -75,16 +71,14 @@ if query:
     ticker = ticker_candidate
 
     try:
-        # PASS THE SESSION TO YFINANCE
-        stock = yf.Ticker(ticker, session=session)
-        info = stock.info
-        history = stock.history(period=period_map[time_range])
+        # 2. Fetch Data (Using the new Cached Function)
+        history, info = get_stock_data(ticker, period_map[time_range])
         
         if history.empty:
             st.error(f"No data found for '{ticker}'. It might be delisted or hitting a rate limit.")
             st.stop()
             
-        # Detect Type: ETF vs STOCK
+        # Detect Type
         quote_type = info.get('quoteType', 'EQUITY') 
         is_etf = quote_type == 'ETF'
 
@@ -223,8 +217,7 @@ if query:
         st.line_chart(history['Close'])
 
     except Exception as e:
-        # Improved error message handling
         if "Too Many Requests" in str(e):
-            st.error("⚠️ Server Busy: Yahoo Finance is temporarily blocking requests from this cloud server. Please wait 1 minute and try again, or try a different ticker.")
+            st.error("⚠️ Server Busy: Yahoo Finance is temporarily blocking requests. Please wait 1 minute.")
         else:
             st.error(f"Error: {e}")
