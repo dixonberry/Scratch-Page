@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import requests
+import requests_cache
 
 # --- Page Config ---
 st.set_page_config(page_title="Market Insights", page_icon="📈", layout="wide")
@@ -22,24 +23,34 @@ st.markdown("""
     .pass {color: #27ae60; font-weight: bold;} 
     .fail {color: #7f8c8d; font-weight: bold;} 
     .big-star {font-size: 30px; margin: 0;}
-    /* Style for the link to make it look clean */
     a {text-decoration: none; color: #2980b9; font-weight: normal; font-size: 16px;}
     a:hover {text-decoration: underline; color: #3498db;}
     footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
+# --- CONFIGURATION (Crucial for fixing Rate Limits) ---
+# 1. Create a cached session for Yahoo Finance
+# This prevents you from re-downloading data you just looked at 5 seconds ago
+session = requests_cache.CachedSession('yfinance.cache', expire_after=300) # Cache for 5 mins
+
+# 2. Add a custom User-Agent (REPLACE 'your-email' WITH YOUR ACTUAL EMAIL)
+# This tells the servers exactly who you are so they don't block you.
+my_headers = {'User-Agent': 'student-project-analysis@gmail.com'} 
+session.headers.update(my_headers)
+
 # --- SEC Cache ---
 @st.cache_data
 def get_sec_tickers():
-    headers = {'User-Agent': 'student-project@example.com'}
     try:
         url = "https://www.sec.gov/files/company_tickers.json"
-        response = requests.get(url, headers=headers)
+        # We use the custom headers here too
+        response = requests.get(url, headers=my_headers)
         data = response.json()
         df = pd.DataFrame.from_dict(data, orient='index')
         return df
-    except:
+    except Exception:
+        # If SEC fails, return empty so the app doesn't crash
         return pd.DataFrame()
 
 # --- Main App ---
@@ -64,12 +75,13 @@ if query:
     ticker = ticker_candidate
 
     try:
-        stock = yf.Ticker(ticker)
+        # PASS THE SESSION TO YFINANCE
+        stock = yf.Ticker(ticker, session=session)
         info = stock.info
         history = stock.history(period=period_map[time_range])
         
         if history.empty:
-            st.error(f"No data found for '{ticker}'.")
+            st.error(f"No data found for '{ticker}'. It might be delisted or hitting a rate limit.")
             st.stop()
             
         # Detect Type: ETF vs STOCK
@@ -165,7 +177,7 @@ if query:
             if curr_ratio and curr_ratio > 1.0: results['Liquidity'] = {'pass': True, 'msg': "Solvent"} 
             else: results['Liquidity'] = {'pass': False, 'msg': "Tight Cash"}
 
-        # Display Logic (Hollow Stars)
+        # Display Logic
         cols = st.columns(len(results))
         for i, (key, val) in enumerate(results.items()):
             with cols[i]:
@@ -202,10 +214,7 @@ if query:
                 """)
 
         # --- Section 4: Chart with Link ---
-        # Generate the dynamic Yahoo Finance URL
         yahoo_link = f"https://finance.yahoo.com/quote/{ticker}"
-        
-        # Use Markdown to create the header with the link in one line
         st.markdown(f"""
             ### History ({time_range}) 
             <a href="{yahoo_link}" target="_blank" style="font-size: 14px; margin-left: 10px;">(View Source Data on Yahoo Finance 🔗)</a>
@@ -214,4 +223,8 @@ if query:
         st.line_chart(history['Close'])
 
     except Exception as e:
-        st.error(f"Error: {e}")
+        # Improved error message handling
+        if "Too Many Requests" in str(e):
+            st.error("⚠️ Server Busy: Yahoo Finance is temporarily blocking requests from this cloud server. Please wait 1 minute and try again, or try a different ticker.")
+        else:
+            st.error(f"Error: {e}")
